@@ -1,35 +1,15 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Image Display</title>
+    <title>AR OBJ Model Display</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
-        body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            font-family: sans-serif;
-        }
-        #ar-container {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-        }
-        #info {
-            position: absolute;
-            top: 10px;
-            width: 100%;
-            text-align: center;
-            color: white;
-            z-index: 2;
-        }
+        body { margin: 0; overflow: hidden; }
+        #ar-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
     </style>
 </head>
 <body>
-    <div id="info">ARで画像を表示します</div>
     <div id="ar-container"></div>
 
     <script type="importmap">
@@ -44,9 +24,11 @@
     <script type="module">
         import * as THREE from 'three';
         import { ARButton } from 'three/addons/webxr/ARButton.js';
+        // OBJLoaderとMTLLoaderをインポート
+        import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+        import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
 
         let camera, scene, renderer;
-        let imagePlane;
 
         init();
         animate();
@@ -54,47 +36,57 @@
         function init() {
             const container = document.getElementById('ar-container');
 
-            // シーンの作成
             scene = new THREE.Scene();
-
-            // カメラの作成
             camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
 
-            // レンダラーの作成
+            // 照明を追加
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            directionalLight.position.set(1, 1, 1).normalize();
+            scene.add(directionalLight);
+
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.xr.enabled = true;
             container.appendChild(renderer.domElement);
 
-            // AR開始ボタンの設置
             document.body.appendChild(ARButton.createButton(renderer));
 
-            // --- 画像の準備 ---
-            // テクスチャ（画像）の読み込み
-            const textureLoader = new THREE.TextureLoader();
-            // ここで表示したい画像のURLを指定します（これはサンプル画像です）
-            const texture = textureLoader.load('image/TIFOちゃん.png'); // 適当なサンプルカエル画像
+            // --- .objモデルの読み込み ---
+            const mtlLoader = new MTLLoader();
+            const objLoader = new OBJLoader();
 
-            // 画像を表示するための板（Plane）ジオメトリを作成
-            const geometry = new THREE.PlaneGeometry(0.3, 0.3); // 画像のサイズ（幅, 高さ）
-            const material = new THREE.MeshBasicMaterial({
-                map: texture,
-                transparent: true, // 透明部分を有効にする
-                side: THREE.DoubleSide // 両面表示
+            // ⚠️ .objファイルと同じ名前の.mtlファイルが同じフォルダにあることを想定しています
+            const mtlPath = 'model/Tifo_Catbot_0729065615_texture.mtl';
+            const objPath = 'model/Tifo_Catbot_0729065615_texture.obj';
+
+            // 1. MTLファイルを読み込む
+            mtlLoader.load(mtlPath, (materials) => {
+                materials.preload();
+                objLoader.setMaterials(materials); // OBJローダーにマテリアルを設定
+
+                // 2. OBJファイルを読み込む
+                objLoader.load(objPath, (object) => {
+                    // モデルの初期位置とサイズを調整
+                    object.position.set(0, -0.2, -0.8); // 位置
+                    object.scale.set(0.1, 0.1, 0.1);    // スケール
+
+                    // カメラの子要素としてモデルを追加
+                    camera.add(object);
+                }, undefined, (error) => {
+                    console.error('An error happened while loading the OBJ file:', error);
+                });
+            }, undefined, (error) => {
+                console.error('An error happened while loading the MTL file:', error);
+                // MTLファイルがない場合はOBJだけでも読み込む（テクスチャなし）
+                objLoader.load(objPath, (object) => {
+                    camera.add(object);
+                });
             });
 
-            // ジオメトリとマテリアルからメッシュ（物体）を作成
-            imagePlane = new THREE.Mesh(geometry, material);
-
-            // 画像をカメラの少し手前に配置
-            imagePlane.position.set(0, 0, -0.5); // X, Y, Z座標
-
-            // カメラの子要素として画像を追加することで、常にカメラの前に表示されるようにする
-            camera.add(imagePlane);
-            scene.add(camera); // カメラをシーンに追加
-
-            // ウィンドウリサイズへの対応
+            scene.add(camera);
             window.addEventListener('resize', onWindowResize, false);
         }
 
@@ -105,11 +97,7 @@
         }
 
         function animate() {
-            renderer.setAnimationLoop(render);
-        }
-
-        function render() {
-            renderer.render(scene, camera);
+            renderer.setAnimationLoop(() => renderer.render(scene, camera));
         }
     </script>
 </body>
