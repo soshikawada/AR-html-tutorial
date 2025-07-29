@@ -1,65 +1,116 @@
 <!DOCTYPE html>
 <html>
-  <head>
+<head>
+    <title>AR Image Display</title>
     <meta charset="utf-8">
-    <title>マーカーレスARデモ</title>
-    <!-- A-Frame（WebXR対応） -->
-    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-    <!-- a-frame ARモード有効化プラグイン（必要なら）-->
-    <script src="https://cdn.jsdelivr.net/npm/aframe-ar@1.8.1/dist/aframe-ar.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
-      body { margin: 0; overflow: hidden; }
-      #ar-button {
-        position: absolute; top: 10px; left: 10px; z-index: 999;
-        padding: 12px 20px; background: #ffd600; border: none; border-radius: 8px;
-        font-size: 18px; font-weight: bold; cursor: pointer;
-      }
-    </style>
-  </head>
-  <body>
-    <!-- AR開始ボタン（WebXR AR対応ブラウザのみ） -->
-    <button id="ar-button" style="display:none;">AR開始</button>
-    <a-scene
-      embedded
-      vr-mode-ui="enabled: false"
-      renderer="colorManagement: true;"
-      device-orientation-permission-ui="enabled: false"
-      webxr="requiredFeatures: hit-test; optionalFeatures: dom-overlay;"
-    >
-      <!-- カメラ -->
-      <a-entity camera></a-entity>
-
-      <!-- 床面にタップでモデル生成 -->
-      <a-entity
-        id="model"
-        position="0 0 0"
-        gltf-model="url(https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models/2.0/Duck/glTF/Duck.gltf)"
-        scale="0.2 0.2 0.2"
-        visible="false"
-        sound="src: url(https://cdn.pixabay.com/audio/2022/07/26/audio_124b7f3be4.mp3); autoplay: false; loop: false; volume: 3"
-      ></a-entity>
-    </a-scene>
-    <script>
-      const scene = document.querySelector('a-scene');
-      const arButton = document.getElementById('ar-button');
-      const model = document.getElementById('model');
-
-      // ARボタン表示（WebXR対応なら）
-      if (scene && scene.hasAttribute('webxr')) {
-        arButton.style.display = 'block';
-      }
-
-      arButton.addEventListener('click', () => {
-        scene.enterAR();
-      });
-
-      // タップでモデルを表示＋音を再生
-      scene.addEventListener('click', function (e) {
-        if (!model.getAttribute('visible')) {
-          model.setAttribute('visible', 'true');
-          model.components.sound.playSound();
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: sans-serif;
         }
-      });
+        #ar-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            z-index: 2;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">ARで画像を表示します</div>
+    <div id="ar-container"></div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+            }
+        }
     </script>
-  </body>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { ARButton } from 'three/addons/webxr/ARButton.js';
+
+        let camera, scene, renderer;
+        let imagePlane;
+
+        init();
+        animate();
+
+        function init() {
+            const container = document.getElementById('ar-container');
+
+            // シーンの作成
+            scene = new THREE.Scene();
+
+            // カメラの作成
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+
+            // レンダラーの作成
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.xr.enabled = true;
+            container.appendChild(renderer.domElement);
+
+            // AR開始ボタンの設置
+            document.body.appendChild(ARButton.createButton(renderer));
+
+            // --- 画像の準備 ---
+            // テクスチャ（画像）の読み込み
+            const textureLoader = new THREE.TextureLoader();
+            // ここで表示したい画像のURLを指定します（これはサンプル画像です）
+            const texture = textureLoader.load('https://i.imgur.com/gYJ2w1j.png'); // 適当なサンプルカエル画像
+
+            // 画像を表示するための板（Plane）ジオメトリを作成
+            const geometry = new THREE.PlaneGeometry(0.3, 0.3); // 画像のサイズ（幅, 高さ）
+            const material = new THREE.MeshBasicMaterial({
+                map: texture,
+                transparent: true, // 透明部分を有効にする
+                side: THREE.DoubleSide // 両面表示
+            });
+
+            // ジオメトリとマテリアルからメッシュ（物体）を作成
+            imagePlane = new THREE.Mesh(geometry, material);
+
+            // 画像をカメラの少し手前に配置
+            imagePlane.position.set(0, 0, -0.5); // X, Y, Z座標
+
+            // カメラの子要素として画像を追加することで、常にカメラの前に表示されるようにする
+            camera.add(imagePlane);
+            scene.add(camera); // カメラをシーンに追加
+
+            // ウィンドウリサイズへの対応
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            renderer.setAnimationLoop(render);
+        }
+
+        function render() {
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
 </html>
