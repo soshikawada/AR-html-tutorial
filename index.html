@@ -1,44 +1,104 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>スピノサウルス ARビューア</title>
-
-    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
-
+    <title>AR OBJ Model Display</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
-        body {
-            font-family: sans-serif;
-            text-align: center;
-        }
-        model-viewer {
-            width: 90%;
-            max-width: 800px;
-            height: 500px;
-            margin: 20px auto;
-            border-radius: 10px;
-            border: 1px solid #ccc;
-        }
+        body { margin: 0; overflow: hidden; }
+        #ar-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
     </style>
 </head>
 <body>
+    <div id="ar-container"></div>
 
-    <h1>スピノサウルスをARで見てみよう！🦕</h1>
-    <p>下のモデルはマウスや指で自由に動かせます。<br>
-       AR対応のスマートフォンなら、右下のボタンを押すと現実の世界にスピノサウルスを呼び出せます。</p>
-    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+            }
+        }
+    </script>
 
-    <model-viewer
-        src="https://storage.googleapis.com/ar-answers-in-search-models/static/dinos/Spinosaurus.glb"
-        ios-src=""
-        alt="スピノサウルスの3Dモデル"
-        ar
-        ar-modes="webxr scene-viewer quick-look"
-        camera-controls
-        auto-rotate
-        shadow-intensity="1">
-    </model-viewer>
+    <script type="module">
+        import * as THREE from 'three';
+        import { ARButton } from 'three/addons/webxr/ARButton.js';
+        // OBJLoaderとMTLLoaderをインポート
+        import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+        import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
 
+        let camera, scene, renderer;
+
+        init();
+        animate();
+
+        function init() {
+            const container = document.getElementById('ar-container');
+
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+
+            // 照明を追加
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            directionalLight.position.set(1, 1, 1).normalize();
+            scene.add(directionalLight);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.xr.enabled = true;
+            container.appendChild(renderer.domElement);
+
+            document.body.appendChild(ARButton.createButton(renderer));
+
+            // --- .objモデルの読み込み ---
+            const mtlLoader = new MTLLoader();
+            const objLoader = new OBJLoader();
+
+            // ⚠️ .objファイルと同じ名前の.mtlファイルが同じフォルダにあることを想定しています
+            const mtlPath = 'model/Tifo_Catbot_0729065615_texture.mtl';
+            const objPath = 'model/Tifo_Catbot_0729065615_texture.obj';
+
+            // 1. MTLファイルを読み込む
+            mtlLoader.load(mtlPath, (materials) => {
+                materials.preload();
+                objLoader.setMaterials(materials); // OBJローダーにマテリアルを設定
+
+                // 2. OBJファイルを読み込む
+                objLoader.load(objPath, (object) => {
+                    // モデルの初期位置とサイズを調整
+                    object.position.set(0, -0.2, -0.8); // 位置
+                    object.scale.set(0.1, 0.1, 0.1);    // スケール
+
+                    // カメラの子要素としてモデルを追加
+                    camera.add(object);
+                }, undefined, (error) => {
+                    console.error('An error happened while loading the OBJ file:', error);
+                });
+            }, undefined, (error) => {
+                console.error('An error happened while loading the MTL file:', error);
+                // MTLファイルがない場合はOBJだけでも読み込む（テクスチャなし）
+                objLoader.load(objPath, (object) => {
+                    camera.add(object);
+                });
+            });
+
+            scene.add(camera);
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            renderer.setAnimationLoop(() => renderer.render(scene, camera));
+        }
+    </script>
 </body>
 </html>
